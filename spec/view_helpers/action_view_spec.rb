@@ -80,9 +80,9 @@ describe WillPaginate::ActionView do
         validate_page_numbers [1,1,3,3], elements
         # test rel attribute values:
         text(elements[0]).should == 'Prev'
-        elements[0]['rel'].should == 'prev start'
+        elements[0]['rel'].should == 'prev'
         text(elements[1]).should == '1'
-        elements[1]['rel'].should == 'prev start'
+        elements[1]['rel'].should == 'prev'
         text(elements[3]).should == 'Next'
         elements[3]['rel'].should == 'next'
       end
@@ -201,6 +201,13 @@ describe WillPaginate::ActionView do
     assert_no_links_match /99/
     assert_no_links_match /ftp/
   end
+
+  it "doesn't allow tampering with script_name" do
+    request.params :script_name => 'p0wned', :original_script_name => 'p0wned'
+    paginate
+    assert_links_match %r{^/foo/bar}
+    assert_no_links_match /p0wned/
+  end
   
   it "should not preserve parameters on POST" do
     request.post
@@ -250,7 +257,7 @@ describe WillPaginate::ActionView do
   end
 
   it "should paginate with custom route page parameter" do
-    request.symbolized_path_parameters.update :controller => 'dummy', :action => nil
+    request.symbolized_path_parameters.update :controller => 'dummy', :action => 'index'
     paginate :per_page => 2 do
       assert_select 'a[href]', 6 do |links|
         assert_links_match %r{/page/(\d+)$}, links, [2, 3, 4, 5, 6, 2]
@@ -268,7 +275,7 @@ describe WillPaginate::ActionView do
   end
 
   it "should paginate with custom route and first page number implicit" do
-    request.symbolized_path_parameters.update :controller => 'ibocorp', :action => nil
+    request.symbolized_path_parameters.update :controller => 'ibocorp', :action => 'index'
     paginate :page => 2, :per_page => 2 do
       assert_select 'a[href]', 7 do |links|
         assert_links_match %r{/ibocorp(?:/(\d+))?$}, links, [nil, nil, 3, 4, 5, 6, 3]
@@ -457,7 +464,7 @@ class DummyRequest
   def initialize(controller)
     @controller = controller
     @get = true
-    @params = {}
+    @params = {}.with_indifferent_access
     @symbolized_path_parameters = { :controller => 'foo', :action => 'bar' }
   end
 
@@ -483,7 +490,11 @@ class DummyRequest
 
   def params(more = nil)
     @params.update(more) if more
-    @params
+    if defined?(ActionController::Parameters)
+      ActionController::Parameters.new(@params)
+    else
+      @params
+    end
   end
   
   def host_with_port
@@ -498,4 +509,8 @@ class DummyRequest
   def protocol
     'http:'
   end
+end
+
+if defined?(ActionController::Parameters)
+  ActionController::Parameters.permit_all_parameters = false
 end
